@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name                Instahancer
 // @namespace           https://github.com/schalkburger/instahancer
-// @version             1.0.7
+// @version             1.0.8
 // @description         Instagram video controls: looping, HTML5 controller, volume control, and Reels scroll buttons
 // @author              Schalk Burger <schalkb@gmail.com>
 // @match               https://*.instagram.com/*
@@ -165,32 +165,29 @@
 
     // Prevent Auto-play of the current reel
     if (config.get("preventAutoplay")) {
-      // 1. Remove the attribute immediately
       video.removeAttribute("autoplay");
-      video.preload = "metadata"; // Suggest the browser doesn't download the whole stream yet
 
-      const preventInitialPlay = (e) => {
+      const handleAutoPlayBlock = (e) => {
+        // Only block if we haven't already blocked this specific video
         if (!video.dataset.autoplayPrevented) {
-          // 2. Stop other scripts from reacting to this play event
+          e.preventDefault();
           e.stopImmediatePropagation();
 
           video.pause();
           video.dataset.autoplayPrevented = "true";
 
-          // 3. Optional: Reset currentTime so the user starts from the beginning
-          video.currentTime = 0;
+          logger("Initial auto-play prevented. Listeners removed.");
 
-          logger("Initial auto-play prevented");
-
-          // 4. Remove the listeners once prevented to save resources
-          video.removeEventListener("playing", preventInitialPlay);
-          video.removeEventListener("play", preventInitialPlay);
+          // CRITICAL: Remove the listeners immediately after the first block.
+          // This allows subsequent manual clicks to work perfectly.
+          video.removeEventListener("play", handleAutoPlayBlock, true);
+          video.removeEventListener("playing", handleAutoPlayBlock, true);
         }
       };
 
-      // Listen for both play (intent) and playing (actual movement)
-      video.addEventListener("play", preventInitialPlay, { capture: true });
-      video.addEventListener("playing", preventInitialPlay, { capture: true });
+      // Use the capture phase (true) to beat Instagram's own scripts
+      video.addEventListener("play", handleAutoPlayBlock, true);
+      video.addEventListener("playing", handleAutoPlayBlock, true);
     }
 
     // Enable HTML5 video controls
