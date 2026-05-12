@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name                Instahancer
 // @namespace           https://github.com/schalkburger/instahancer
-// @version             1.0.8
-// @description         Instagram video controls: looping, HTML5 controller, volume control, and Reels scroll buttons
+// @version             1.10.0
+// @description         Instagram Reels Enhancements: HTML5 controller, volume control, RAM saver, and more. Designed for a smoother, more customizable viewing experience. Open-source on GitHub!
 // @author              Schalk Burger <schalkb@gmail.com>
 // @match               https://*.instagram.com/*
+// @exclude             https://*.instagram.com/stories/*/*/
 // @grant               GM_info
 // @grant               GM_setValue
 // @grant               GM_getValue
