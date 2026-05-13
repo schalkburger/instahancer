@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name                Instahancer
 // @namespace           https://github.com/schalkburger/instahancer
-// @version             1.10.0
+// @version             1.10.4
 // @description         Instagram Reels Enhancements: HTML5 controller, volume control, RAM saver, and more. Designed for a smoother, more customizable viewing experience. Open-source on GitHub!
 // @author              Schalk Burger <schalkb@gmail.com>
 // @match               https://*.instagram.com/*
@@ -299,6 +299,65 @@
 
   if (location.pathname.startsWith("/reels/")) {
     reelsCleanupInterval = setInterval(cleanupOffscreenReels, 2000);
+  }
+
+  // ========== REEL CLICK HANDLER ==========
+  function setupReelClickInterception() {
+    document.removeEventListener("click", handleReelClick, true);
+    document.addEventListener(
+      "click",
+      handleReelClick,
+      true
+    );
+  }
+
+  function handleReelClick(e) {
+    const link = e.target.closest("a");
+    if (!link) return;
+
+    // Check if link is a reel (Instagram reel links typically contain /reels/)
+    const href = link.getAttribute("href") || "";
+    if (!href.includes("/reels/")) return;
+
+    // Don't intercept if clicking certain interactive elements
+    // if (
+    //   e.target.closest("button") ||
+    //   e.target.closest("[role='button']") ||
+    //   e.target.closest(".x1iyjqo2") ||
+    //   e.target.closest("[aria-label*='Comment']") ||
+    //   e.target.closest("[aria-label*='Like']") ||
+    //   e.target.closest("[aria-label*='Share']")
+    // ) {
+    //   return;
+    // }
+
+    // Prevent default link behavior for all reel clicks
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    // Find video in this reel container
+    const reelContainer = link.closest("article") || link.closest("div[role='presentation']") || link;
+    const video = reelContainer.querySelector("video");
+
+    if (video) {
+      // Toggle play/pause
+      if (video.paused) {
+        video.play();
+      } else {
+        video.pause();
+      }
+
+      logger("Reel click intercepted: play/pause toggled");
+    } else {
+      logger("Reel clicked but no video found");
+    }
+  }
+
+  function checkPageAndSetupReels() {
+    state.currentPage = location.pathname;
+    setupReelClickInterception();
+    logger("Reel click interception enabled");
   }
 
   window.addEventListener("popstate", checkPageAndSetupReels);
