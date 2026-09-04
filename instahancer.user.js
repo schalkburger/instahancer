@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name                Instahancer
 // @namespace           https://github.com/schalkburger/instahancer
-// @version             1.10.4
+// @version             1.11
 // @description         Instagram Reels Enhancements: HTML5 controller, volume control, RAM saver, and more. Designed for a smoother, more customizable viewing experience. Open-source on GitHub!
 // @author              Schalk Burger <schalkb@gmail.com>
 // @match               https://*.instagram.com/*
@@ -281,7 +281,10 @@
     if (location.pathname.startsWith("/reels/") && !reelsCleanupInterval) {
       reelsCleanupInterval = setInterval(cleanupOffscreenReels, 2000);
       logger("Started Reels RAM cleanup");
-    } else if (!location.pathname.startsWith("/reels/") && reelsCleanupInterval) {
+    } else if (
+      !location.pathname.startsWith("/reels/") &&
+      reelsCleanupInterval
+    ) {
       clearInterval(reelsCleanupInterval);
       reelsCleanupInterval = null;
       logger("Stopped Reels RAM cleanup");
@@ -304,53 +307,46 @@
   // ========== REEL CLICK HANDLER ==========
   function setupReelClickInterception() {
     document.removeEventListener("click", handleReelClick, true);
-    document.addEventListener(
-      "click",
-      handleReelClick,
-      true
-    );
+    document.addEventListener("click", handleReelClick, true);
   }
 
   function handleReelClick(e) {
-    const link = e.target.closest("a");
-    if (!link) return;
+    // 1. Locate interactable elements or elements acting as video buttons
+    const interactable =
+      e.target.closest('[data-interactable="|click|"]') ||
+      e.target.closest('[role="button"]');
+    if (!interactable) return;
 
-    // Check if link is a reel (Instagram reel links typically contain /reels/)
-    const href = link.getAttribute("href") || "";
-    if (!href.includes("/reels/")) return;
+    // 2. Determine if the element is a Reel/Video
+    const buttonWithLabel =
+      interactable.getAttribute("role") === "button"
+        ? interactable
+        : interactable.querySelector('[role="button"]');
 
-    // Don't intercept if clicking certain interactive elements
-    // if (
-    //   e.target.closest("button") ||
-    //   e.target.closest("[role='button']") ||
-    //   e.target.closest(".x1iyjqo2") ||
-    //   e.target.closest("[aria-label*='Comment']") ||
-    //   e.target.closest("[aria-label*='Like']") ||
-    //   e.target.closest("[aria-label*='Share']")
-    // ) {
-    //   return;
-    // }
+    const ariaLabel = buttonWithLabel?.getAttribute("aria-label") || "";
+    const isReel = ariaLabel.toLowerCase().startsWith("video");
 
-    // Prevent default link behavior for all reel clicks
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
+    if (!isReel) return;
 
-    // Find video in this reel container
-    const reelContainer = link.closest("article") || link.closest("div[role='presentation']") || link;
-    const video = reelContainer.querySelector("video");
+    // 3. Prevent standard navigation behavior if necessary
+    // e.preventDefault();
+    // e.stopPropagation();
+    // e.stopImmediatePropagation();
+
+    // 4. Locate the active video player (if on a view where video is rendered)
+    const reelContainer = interactable.closest(".wbloks_1") || interactable;
+    const video =
+      reelContainer.querySelector("video") || document.querySelector("video");
 
     if (video) {
-      // Toggle play/pause
       if (video.paused) {
         video.play();
       } else {
         video.pause();
       }
-
       logger("Reel click intercepted: play/pause toggled");
     } else {
-      logger("Reel clicked but no video found");
+      logger("Reel thumbnail clicked (navigation target)");
     }
   }
 
