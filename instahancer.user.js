@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name                Instahancer
 // @namespace           https://github.com/schalkburger/instahancer
-// @version             1.11
-// @description         Instagram Reels Enhancements: HTML5 controller, volume control, RAM saver, and more. Designed for a smoother, more customizable viewing experience. Open-source on GitHub!
+// @version             1.12.8
+// @description         Instagram Reels Enhancements: HTML5 controller, volume control, RAM saver, and more.
 // @author              Schalk Burger <schalkb@gmail.com>
 // @match               https://*.instagram.com/*
 // @exclude             https://*.instagram.com/stories/*/*/
+// @require             https://openuserjs.org/src/libs/sizzle/GM_config.js
 // @grant               GM_info
 // @grant               GM_setValue
 // @grant               GM_getValue
@@ -14,7 +15,6 @@
 // @grant               GM_registerMenuCommand
 // @grant               GM_unregisterMenuCommand
 // @grant               GM_addValueChangeListener
-// @require             https://github.com/PRO-2684/GM_config/releases/download/v1.2.2/config.min.js
 // @icon                https://www.google.com/s2/favicons?domain=www.instagram.com&sz=32
 // @license             MIT
 // @run-at              document-idle
@@ -23,8 +23,8 @@
 (function () {
   "use strict";
 
-  let version = GM_info.script.version;
-  let name = GM_info.script.name;
+  const version = GM_info.script.version;
+  const name = GM_info.script.name;
   console.log(`[IH] ${name} ${version} initializing`);
 
   // ========== HARDCODED SETTINGS ==========
@@ -36,24 +36,32 @@
     PREVENT_AUTOPLAY: true,
   };
 
+  // ========== CONFIG MENU SETUP ==========
   const configDesc = {
     videoVolume: {
-      name: "Default Video Volume",
-      type: "float", // Allows decimal values for volume levels (0.0 to 1.0)
-      value: 0.5, // Default to 50%
+      label: "Default Video Volume (0.0 to 1.0)",
+      type: "float",
+      default: 0.2,
     },
     preventAutoplay: {
-      name: "Prevent Video Autoplay",
-      type: "bool", // Toggle switch
-      value: true, // Enabled by default
+      label: "Prevent Video Autoplay",
+      type: "checkbox",
+      default: true,
     },
   };
 
-  const config = new GM_config(configDesc); // Register menu
+  const config = new GM_config({
+    id: "Instahancer_Config",
+    title: "Instahancer Settings",
+    fields: configDesc,
+  });
+
+  GM_registerMenuCommand("Instahancer Settings", () => {
+    config.open();
+  });
 
   // ========== STATE MANAGEMENT ==========
   const state = {
-    videoVolume: GM_getValue("IG_VIDEO_VOLUME") ?? 0.5,
     currentPage: location.pathname,
     processedVideos: new WeakSet(),
   };
@@ -61,15 +69,6 @@
   // ========== UTILITIES ==========
   function logger(...args) {
     console.log("[IH]", ...args);
-  }
-
-  function saveVolume(volume) {
-    state.videoVolume = volume;
-    GM_setValue("IG_VIDEO_VOLUME", volume);
-  }
-
-  function getVolume() {
-    return state.videoVolume;
   }
 
   function debounce(func, wait) {
@@ -86,90 +85,80 @@
       display: none;
     }
 
-    .ig-scroll-button {
-      position: fixed;
-      right: 20px;
-      width: 50px;
-      height: 50px;
-      background: rgba(0, 0, 0, 0.6);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      z-index: 1000;
-      transition: background 0.3s ease;
-      border: none;
-      color: white;
-      font-size: 24px;
-      font-weight: bold;
-      display: none;
+    /* Force HTML5 video controls top layer, let pointer through IG click masks */
+    video::-webkit-media-controls {
+      z-index: 2147483647 !important;
     }
 
-    .ig-scroll-button:hover {
-      background: rgba(0, 0, 0, 0.8);
-    }
-
-    .ig-scroll-up {
-      top: 20px;
-    }
-
-    .ig-scroll-down {
-      bottom: 20px;
-    }
-
-    .ig-volume-slider {
-      position: fixed;
-      bottom: 80px;
-      right: 20px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 10px;
-      border-radius: 8px;
-      z-index: 999;
-      width: 50px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s ease;
-    }
-
-    .ig-volume-slider.show {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .ig-volume-slider input {
-      width: 30px;
-      height: 100px;
-      writing-mode: vertical-lr;
-      direction: rtl;
-      cursor: pointer;
-    }
-
-    .ig-volume-label {
-      color: white;
-      font-size: 12px;
-      text-align: center;
+    div[role="button"][aria-label="Control"],
+    div[aria-label="Control"] {
+      pointer-events: none !important;
     }
   `;
 
   GM_addStyle(styles);
   logger("Styles loaded");
 
-  // ========== VIDEO VOLUME & PLAYBACK CONTROL ==========
+  // ========== PROTOTYPE OVERRIDES FOR INSTAGRAM RECT STATE ==========
+  const nativeMutedDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "muted");
+  const nativeVolumeDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "volume");
+
+  Object.defineProperty(HTMLMediaElement.prototype, "muted", {
+    get: function () {
+      return nativeMutedDescriptor.get.call(this);
+    },
+    set: function (val) {
+      if (SETTINGS.MODIFY_VIDEO_VOLUME) {
+        nativeMutedDescriptor.set.call(this, false);
+      } else {
+        nativeMutedDescriptor.set.call(this, val);
+      }
+    },
+    configurable: true,
+  });
+
+  Object.defineProperty(HTMLMediaElement.prototype, "volume", {
+    get: function () {
+      return nativeVolumeDescriptor.get.call(this);
+    },
+    set: function (val) {
+      if (SETTINGS.MODIFY_VIDEO_VOLUME) {
+        const targetVolume = parseFloat(config.get("videoVolume")) || 0.2;
+        nativeVolumeDescriptor.set.call(this, targetVolume);
+      } else {
+        nativeVolumeDescriptor.set.call(this, val);
+      }
+    },
+    configurable: true,
+  });
+
+  // ========== VIDEO PLAYBACK CONTROL ==========
   function setupVideoEventListeners(video) {
     if (state.processedVideos.has(video)) return;
     state.processedVideos.add(video);
 
-    // Prevent Auto-play of the current reel
+    if (SETTINGS.HTML5_VIDEO_CONTROL) {
+      video.controls = true;
+      video.controlsList.add("nodownload");
+      video.style.zIndex = "999";
+      video.style.position = "relative";
+      logger("HTML5 video controls enabled");
+    }
+
+    if (SETTINGS.MODIFY_VIDEO_VOLUME) {
+      const targetVolume = parseFloat(config.get("videoVolume")) || 0.2;
+      nativeVolumeDescriptor.set.call(video, targetVolume);
+      nativeMutedDescriptor.set.call(video, false);
+
+      video.addEventListener("volumechange", (e) => {
+        e.stopPropagation();
+      }, true);
+    }
+
     if (config.get("preventAutoplay")) {
       video.removeAttribute("autoplay");
 
       const handleAutoPlayBlock = (e) => {
-        // Only block if we haven't already blocked this specific video
         if (!video.dataset.autoplayPrevented) {
           e.preventDefault();
           e.stopImmediatePropagation();
@@ -177,58 +166,22 @@
           video.pause();
           video.dataset.autoplayPrevented = "true";
 
-          logger("Initial auto-play prevented. Listeners removed.");
-
-          // CRITICAL: Remove the listeners immediately after the first block.
-          // This allows subsequent manual clicks to work perfectly.
+          logger("Initial auto-play prevented.");
           video.removeEventListener("play", handleAutoPlayBlock, true);
           video.removeEventListener("playing", handleAutoPlayBlock, true);
         }
       };
 
-      // Use the capture phase (true) to beat Instagram's own scripts
       video.addEventListener("play", handleAutoPlayBlock, true);
       video.addEventListener("playing", handleAutoPlayBlock, true);
     }
 
-    // Enable HTML5 video controls
-    if (SETTINGS.HTML5_VIDEO_CONTROL) {
-      video.controls = true;
-      video.controlsList.add("nodownload");
-      logger("HTML5 video controls enabled");
-    }
-
-    // Disable video looping
     if (SETTINGS.DISABLE_VIDEO_LOOPING) {
-      video.addEventListener("ended", (e) => {
+      video.addEventListener("ended", () => {
         if (!video.dataset.loopDisabled) {
           video.dataset.loopDisabled = "true";
           video.pause();
           logger("Video loop disabled");
-        }
-      });
-    }
-
-    // Set initial volume and overrides
-    if (SETTINGS.MODIFY_VIDEO_VOLUME) {
-      const enforceVolumeAndMute = () => {
-        video.volume = config.get("videoVolume");
-        video.muted = false;
-      };
-
-      enforceVolumeAndMute();
-
-      video.addEventListener("play", enforceVolumeAndMute);
-      video.addEventListener("playing", enforceVolumeAndMute);
-
-      video.addEventListener("volumechange", () => {
-        if (!video.dataset.volumeSet && !video.muted) {
-          video.dataset.volumeSet = "true";
-          saveVolume(video.volume);
-
-          setTimeout(() => {
-            video.dataset.volumeSet = "";
-          }, 100);
         }
       });
     }
@@ -311,13 +264,11 @@
   }
 
   function handleReelClick(e) {
-    // 1. Locate interactable elements or elements acting as video buttons
     const interactable =
       e.target.closest('[data-interactable="|click|"]') ||
       e.target.closest('[role="button"]');
     if (!interactable) return;
 
-    // 2. Determine if the element is a Reel/Video
     const buttonWithLabel =
       interactable.getAttribute("role") === "button"
         ? interactable
@@ -328,12 +279,11 @@
 
     if (!isReel) return;
 
-    // 3. Prevent standard navigation behavior if necessary
-    // e.preventDefault();
-    // e.stopPropagation();
-    // e.stopImmediatePropagation();
+    // Block IG navigation
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
 
-    // 4. Locate the active video player (if on a view where video is rendered)
     const reelContainer = interactable.closest(".wbloks_1") || interactable;
     const video =
       reelContainer.querySelector("video") || document.querySelector("video");
@@ -345,15 +295,12 @@
         video.pause();
       }
       logger("Reel click intercepted: play/pause toggled");
-    } else {
-      logger("Reel thumbnail clicked (navigation target)");
     }
   }
 
   function checkPageAndSetupReels() {
     state.currentPage = location.pathname;
     setupReelClickInterception();
-    logger("Reel click interception enabled");
   }
 
   window.addEventListener("popstate", checkPageAndSetupReels);
