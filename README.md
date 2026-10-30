@@ -1,6 +1,6 @@
 # Instahancer
 
-Instagram Reels Enhancements: HTML5 controller, volume control, RAM saver, and more.
+Instagram Enhancements: HTML5 controller, volume control, RAM saver, and more.
 
 A userscript that restores native `<video>` controls on Instagram, takes control of volume and autoplay, frees memory while scrolling Reels, and turns Likes/Saved grid tiles into openable links.
 
