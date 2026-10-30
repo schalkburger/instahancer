@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name                Instahancer
 // @namespace           https://github.com/schalkburger/instahancer
-// @version             1.12.8
+// @version             1.14.0
 // @description         Instagram Reels Enhancements: HTML5 controller, volume control, RAM saver, and more.
 // @author              Schalk Burger <schalkb@gmail.com>
 // @match               https://*.instagram.com/*
@@ -94,6 +94,24 @@
     div[aria-label="Control"] {
       pointer-events: none !important;
     }
+
+    [role="main"] {
+      padding: 0;
+    }
+    
+    [role="main"] > div {
+        max-width: none !important;
+    }
+
+    [role="main"] > div > div {
+        --x-maxWidth: none !important;
+        max-width: none !important;
+    }
+
+    video[controlslist="nodownload"] {
+      max-height: 100vh;
+    }
+
   `;
 
   GM_addStyle(styles);
@@ -320,6 +338,247 @@
   if (SETTINGS.SCROLL_BUTTON) {
     checkPageAndSetupReels();
   }
+
+
+  const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+  // ---------- Shortcode conversion ----------
+
+  function idToShortcode(idStr) {
+    try {
+      let id = BigInt(idStr);
+      if (id <= 0n) return null;
+      let shortcode = '';
+      while (id > 0n) {
+        shortcode = ALPHABET[Number(id % 64n)] + shortcode;
+        id = id / 64n;
+      }
+      return shortcode;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Sanity check: known-good pair from the likes page.
+  (function selfTest() {
+    if (idToShortcode('4012431098281424326') !== 'DevBNM6y3XG') {
+      console.warn('[Likes Helper] idToShortcode self-test FAILED');
+    }
+  })();
+
+  // ---------- ig_cache_key decoding ----------
+  //
+  // Decoded keys can appear as:
+  //   "<mediaId>"                         -> standard
+  //   "<mediaId>_<userId>"                -> underscore separator
+  //   "<mediaId><userId>"                 -> concatenated digits (reels!)
+  //   base64 of any of the above
+  //
+  // Instagram shortcodes are exactly 11 chars. We use that as ground
+  // truth: try the whole token, then progressively shorter leading
+  // prefixes (17..20 digits) until idToShortcode() yields 11 chars.
+
+  function mediaIdFromBlob(digits) {
+    // Fast path: whole token already yields an 11-char shortcode.
+    const direct = idToShortcode(digits);
+    if (direct && direct.length === 11) return digits;
+
+    // Slow path: try leading prefixes of plausible media-ID lengths.
+    const max = Math.min(digits.length, 20);
+    for (let len = 17; len <= max; len++) {
+      const candidate = digits.substring(0, len);
+      const sc = idToShortcode(candidate);
+      if (sc && sc.length === 11) return candidate;
+    }
+    return null;
+  }
+
+  function decodeCacheKey(cacheKey) {
+    try {
+      let raw = decodeURIComponent(cacheKey).split('.')[0];
+      if (!/^\d+$/.test(raw)) raw = atob(raw);
+
+      // Try underscore-separated parts first.
+      const parts = raw.split('_');
+      for (const part of parts) {
+        if (!/^\d{10,}$/.test(part)) continue;
+        const id = mediaIdFromBlob(part);
+        if (id) return id;
+      }
+
+      // Try the whole concatenated blob (no separator).
+      if (/^\d{10,}$/.test(raw)) {
+        const id = mediaIdFromBlob(raw);
+        if (id) return id;
+      }
+
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ---------- React fiber fallback ----------
+
+  function extractUrlFromFiber(node) {
+    let curr = node;
+    let depth = 0;
+    while (curr && depth < 15) {
+      for (const key of Object.keys(curr)) {
+        if (key.startsWith('__reactFiber$') || key.startsWith('__reactProps$')) {
+          const found = searchFiberProps(curr[key]);
+          if (found) return found;
+        }
+      }
+      curr = curr.parentElement;
+      depth++;
+    }
+    return null;
+  }
+
+  function searchFiberProps(node, depth = 0) {
+    if (!node || depth > 6) return null;
+    const props = node.memoizedProps || node.pendingProps;
+    if (props) {
+      if (props.href && (props.href.includes('/p/') || props.href.includes('/reel/'))) {
+        return props.href.startsWith('http')
+          ? props.href
+          : `https://www.instagram.com${props.href}`;
+      }
+      const media = props.media || props.item || props.data || props.post;
+      if (media) {
+        if (media.code) return `https://www.instagram.com/p/${media.code}/`;
+        if (media.shortcode) return `https://www.instagram.com/p/${media.shortcode}/`;
+        if (media.pk) {
+          const sc = idToShortcode(media.pk.toString().split('_')[0]);
+          if (sc) return `https://www.instagram.com/p/${sc}/`;
+        }
+      }
+    }
+    let child = node.child;
+    while (child) {
+      const res = searchFiberProps(child, depth + 1);
+      if (res) return res;
+      child = child.sibling;
+    }
+    return null;
+  }
+
+  // ---------- URL resolution ----------
+
+  function getPostUrlFromImg(img) {
+    if (!img || !img.src) return null;
+
+    // PRIMARY: decode ig_cache_key -> media ID -> shortcode.
+    const m = img.src.match(/ig_cache_key=([^&.]+)/);
+    if (m) {
+      const idStr = decodeCacheKey(m[1]);
+      if (idStr) {
+        const shortcode = idToShortcode(idStr);
+        if (shortcode) {
+          return `https://www.instagram.com/p/${shortcode}/`;
+        }
+      }
+    }
+
+    // FALLBACK: React fiber — accept only well-formed 11-char shortcodes.
+    const fiberUrl = extractUrlFromFiber(img);
+    if (fiberUrl && /\/(p|reel)\/[A-Za-z0-9_-]{11}\/?$/.test(fiberUrl)) {
+      return fiberUrl;
+    }
+
+    return null;
+  }
+
+  // ---------- Page / DOM plumbing ----------
+
+  function isLikesPage() {
+    return (
+      window.location.href.includes('/your_activity/') ||
+      window.location.href.includes('/saved/')
+    );
+  }
+
+  // The grid cell is the nearest ancestor of the button whose inline
+  // style declares an aspect-ratio — it wraps both the image and the
+  // reel play-icon overlay, so the anchor covers the whole tile.
+  function findCell(btn) {
+    let el = btn;
+    for (let i = 0; i < 8 && el; i++) {
+      const s = (el.getAttribute && el.getAttribute('style')) || '';
+      if (s.includes('aspect-ratio')) return el;
+      el = el.parentElement;
+    }
+    return btn.parentElement;
+  }
+
+  // Force pointer-events through the chain so the anchor wins hit-tests,
+  // even when Instagram sets pointer-events: none on the button to route
+  // clicks through JS.
+  function enablePointerEvents(btn, stopAt) {
+    btn.style.pointerEvents = 'auto';
+    let p = btn.parentElement;
+    for (let i = 0; i < 6 && p && p !== stopAt; i++) {
+      if (p.style && p.style.pointerEvents === 'none') {
+        p.style.pointerEvents = 'auto';
+      }
+      p = p.parentElement;
+    }
+  }
+
+  function processThumbnails() {
+    if (!isLikesPage()) return;
+
+    document.querySelectorAll('[role="button"]').forEach(btn => {
+      const img = btn.querySelector('img[src*="ig_cache_key="]');
+      if (!img) return;
+
+      // Re-process recycled DOM nodes when their image src changes.
+      if (btn.dataset.likesHelperProcessed === img.src) return;
+
+      const url = getPostUrlFromImg(img);
+      if (!url) return;
+
+      btn.dataset.likesHelperProcessed = img.src;
+
+      // If a valid <a> already wraps this tile, just fix its href.
+      const outerA = btn.closest('a[href*="/p/"], a[href*="/reel/"]');
+      if (outerA) {
+        outerA.href = url;
+        outerA.target = '_blank';
+        outerA.rel = 'noopener noreferrer';
+        enablePointerEvents(btn, outerA);
+        return;
+      }
+
+      // Otherwise wrap the whole cell (not just the button) so the
+      // reel play-icon overlay is also covered by the anchor.
+      const cell = findCell(btn);
+      if (!cell || !cell.parentElement) return;
+
+      // Remove any prior wrapper from an earlier run (idempotent).
+      const prevWrapper = cell.parentElement.closest('a[data-likes-helper="true"]');
+      if (prevWrapper) prevWrapper.replaceWith(cell);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.style.display = 'contents';   // preserve layout
+      a.dataset.likesHelper = 'true';
+
+      cell.parentElement.insertBefore(a, cell);
+      a.appendChild(cell);
+
+      enablePointerEvents(btn, a);
+    });
+  }
+
+  const observer = new MutationObserver(() => processThumbnails());
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  setInterval(processThumbnails, 1000);
+  processThumbnails();
 
   logger("Script initialization complete");
 })();
