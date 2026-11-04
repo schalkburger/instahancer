@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name                Instahancer
 // @namespace           https://github.com/schalkburger/instahancer
-// @version             1.14.0
+// @version             1.14.7
 // @description         Instagram Reels Enhancements: HTML5 controller, volume control, RAM saver, and more.
 // @author              Schalk Burger <schalkb@gmail.com>
 // @match               https://*.instagram.com/*
@@ -66,6 +66,18 @@
     processedVideos: new WeakSet(),
   };
 
+  // Autoplay gate: play() allowed only shortly after a real user gesture.
+  let lastUserGesture = 0;
+  ["pointerdown", "keydown", "touchstart"].forEach((type) => {
+    document.addEventListener(
+      type,
+      () => {
+        lastUserGesture = Date.now();
+      },
+      true
+    );
+  });
+
   // ========== UTILITIES ==========
   function logger(...args) {
     console.log("[IH]", ...args);
@@ -97,10 +109,12 @@
 
     [role="main"] {
       padding: 0;
+      overflow-y: hidden;
     }
     
     [role="main"] > div {
-        max-width: none !important;
+        max-width: none !important;        
+        max-height: 100vh;
     }
 
     [role="main"] > div > div {
@@ -108,8 +122,12 @@
         max-width: none !important;
     }
 
+    [role="main"] > div > div:nth-child(1) > div > div:nth-child(2) {
+      max-height: 96vh;
+    }
+
     video[controlslist="nodownload"] {
-      max-height: 100vh;
+      max-height: 96vh;
     }
 
   `;
@@ -177,17 +195,13 @@
       video.removeAttribute("autoplay");
 
       const handleAutoPlayBlock = (e) => {
-        if (!video.dataset.autoplayPrevented) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
+        // Allow play() triggered by an actual user gesture (click, key, touch).
+        if (Date.now() - lastUserGesture < 500) return;
 
-          video.pause();
-          video.dataset.autoplayPrevented = "true";
-
-          logger("Initial auto-play prevented.");
-          video.removeEventListener("play", handleAutoPlayBlock, true);
-          video.removeEventListener("playing", handleAutoPlayBlock, true);
-        }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        video.pause();
+        logger("Auto-play prevented.");
       };
 
       video.addEventListener("play", handleAutoPlayBlock, true);
@@ -281,39 +295,90 @@
     document.addEventListener("click", handleReelClick, true);
   }
 
-  function handleReelClick(e) {
-    const interactable =
-      e.target.closest('[data-interactable="|click|"]') ||
-      e.target.closest('[role="button"]');
-    if (!interactable) return;
-
-    const buttonWithLabel =
-      interactable.getAttribute("role") === "button"
-        ? interactable
-        : interactable.querySelector('[role="button"]');
-
-    const ariaLabel = buttonWithLabel?.getAttribute("aria-label") || "";
-    const isReel = ariaLabel.toLowerCase().startsWith("video");
-
-    if (!isReel) return;
+  function interceptClick(e, video) {
+    if (!video) return;
 
     // Block IG navigation
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
 
-    const reelContainer = interactable.closest(".wbloks_1") || interactable;
-    const video =
-      reelContainer.querySelector("video") || document.querySelector("video");
-
-    if (video) {
-      if (video.paused) {
-        video.play();
-      } else {
-        video.pause();
-      }
-      logger("Reel click intercepted: play/pause toggled");
+    if (video.paused) {
+      video.play();
+    } else {
+      video.pause();
     }
+    logger("Reel click intercepted: play/pause toggled");
+  }
+
+  function videoFromPoint(x, y) {
+    const videos = document.querySelectorAll("video");
+    for (const video of videos) {
+      const rect = video.getBoundingClientRect();
+      if (
+        x >= rect.left &&
+        x <= rect.right &&
+        y >= rect.top &&
+        y <= rect.bottom
+      ) {
+        return video;
+      }
+    }
+    return null;
+  }
+
+  function isPassThrough(target, video) {
+    const el = target.closest('[role="button"], [aria-label], time, a[href]');
+    if (!el || el === video) return false;
+    if (el.tagName === "TIME") return true;
+
+    const label = (el.getAttribute("aria-label") || "").toLowerCase();
+    if (label) return !label.includes("video");
+
+    const href = el.getAttribute("href");
+    if (href) {
+      // Media wrapper (/reel/<code>, /p/<code>) = video surface.
+      // Anything else (profile, comments, external) navigates normally.
+      return !/^\/(?:reels?|p)\/[A-Za-z0-9_-]{7,}\/?$/.test(href);
+    }
+    return false;
+  }
+
+  function handleReelClick(e) {
+    const target = e.target;
+
+    // Modals (Share, Comments, ...) float above the video; never intercept
+    // clicks inside them even when the video rect contains the click point.
+    if (target.closest('[role="dialog"], [aria-modal="true"]')) return;
+
+    // Button overlay path (/reels/ page).
+    const interactable =
+      target.closest('[data-interactable="|click|"]') ||
+      target.closest('[role="button"]');
+    if (interactable) {
+      const buttonWithLabel =
+        interactable.getAttribute("role") === "button"
+          ? interactable
+          : interactable.querySelector('[role="button"]');
+
+      const ariaLabel = buttonWithLabel?.getAttribute("aria-label") || "";
+      if (ariaLabel.toLowerCase().startsWith("video")) {
+        const reelContainer =
+          interactable.closest(".wbloks_1") || interactable;
+        return interceptClick(
+          e,
+          reelContainer.querySelector("video") || document.querySelector("video")
+        );
+      }
+    }
+
+    // Feed path: click landed on a video surface.
+    const video =
+      target.closest("video") || videoFromPoint(e.clientX, e.clientY);
+    if (!video) return;
+    if (isPassThrough(target, video)) return;
+
+    interceptClick(e, video);
   }
 
   function checkPageAndSetupReels() {
