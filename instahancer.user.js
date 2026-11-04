@@ -109,12 +109,10 @@
 
     [role="main"] {
       padding: 0;
-      overflow-y: hidden;
     }
     
     [role="main"] > div {
         max-width: none !important;        
-        max-height: 100vh;
     }
 
     [role="main"] > div > div {
@@ -122,9 +120,9 @@
         max-width: none !important;
     }
 
-    [role="main"] > div > div:nth-child(1) > div > div:nth-child(2) {
-      max-height: 96vh;
-    }
+    // [role="main"] > div > div:nth-child(1) > div > div:nth-child(2) {
+    //   max-height: 96vh;
+    // }
 
     video[controlslist="nodownload"] {
       max-height: 96vh;
