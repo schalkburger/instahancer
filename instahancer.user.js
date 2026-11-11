@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name                Instahancer
 // @namespace           https://github.com/schalkburger/instahancer
-// @version             1.14.7
+// @version             1.14.10
 // @description         Instagram Reels Enhancements: HTML5 controller, volume control, RAM saver, and more.
 // @author              Schalk Burger <schalkb@gmail.com>
 // @match               https://*.instagram.com/*
@@ -54,6 +54,78 @@
     id: "Instahancer_Config",
     title: "Instahancer Settings",
     fields: configDesc,
+    frameStyle:
+      "border: 1px solid #363636; border-radius: 12px; background: #000;" +
+      " box-shadow: 0 12px 32px rgba(0,0,0,.6); width: min(420px, 92vw);" +
+      " height: auto; max-height: 90vh; min-height: 215px; overflow: auto; padding: 0;" +
+      " position: fixed; z-index: 9999; display: none; opacity: 0;",
+    css: `
+    #Instahancer_Config {
+      background: #181c20;
+      color: #f5f5f5;
+      padding: 20px;
+      font-family: system-ui, sans-serif;
+    }
+    #Instahancer_Config_header {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0 0 16px;
+      text-align: left;
+    }
+    #Instahancer_Config .config_var {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    #Instahancer_Config .field_label {
+      font-size: 13px;
+      font-weight: 400;
+      color: #f5f5f5;
+    }
+    #Instahancer_Config input[type="text"] {
+      background: #1a1a1a;
+      border: 1px solid #363636;
+      border-radius: 6px;
+      color: #f5f5f5;
+      padding: 6px 8px;
+      width: 80px;
+    }
+    #Instahancer_Config input[type="checkbox"] {
+      accent-color: #0095f6;
+      width: 16px;
+      height: 16px;
+    }
+    #Instahancer_Config_buttons_holder {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 8px;
+      margin-top: 18px;
+    }
+    #Instahancer_Config .saveclose_buttons {
+      background: #1a1a1a;
+      border: 1px solid #363636;
+      border-radius: 8px;
+      color: #f5f5f5;
+      font-size: 13px;
+      padding: 8px 16px;
+      margin: 0;
+      cursor: pointer;
+    }
+    #Instahancer_Config .saveclose_buttons:hover {
+      background: #262626;
+    }
+    #Instahancer_Config .reset {
+      color: #a8a8a8;
+      font-size: 11px;
+      margin-left: 4px;
+    }
+  `,
+    events: {
+      // Library builds handler as "on" + capitalized key
+      Save: () => config.close(),
+    },
   });
 
   GM_registerMenuCommand("Instahancer Settings", () => {
@@ -112,14 +184,14 @@
     }
     
     [role="main"] > div {
-        max-width: none !important;        
+        max-width: 85vw !important;        
     }
 
     [role="main"] > div > div {
-        --x-maxWidth: none !important;
-        max-width: none !important;
+        --x-maxWidth: 70vw;
+        max-width: var(--x-maxWidth) !important;
     }
-
+    
     // [role="main"] > div > div:nth-child(1) > div > div:nth-child(2) {
     //   max-height: 96vh;
     // }
