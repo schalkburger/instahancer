@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name                Instahancer
 // @namespace           https://github.com/schalkburger/instahancer
-// @version             1.14.10
+// @version             1.14.12
 // @description         Instagram Reels Enhancements: HTML5 controller, volume control, RAM saver, and more.
 // @author              Schalk Burger <schalkb@gmail.com>
 // @match               https://*.instagram.com/*
@@ -52,11 +52,11 @@
 
   const config = new GM_config({
     id: "Instahancer_Config",
-    title: "Instahancer Settings",
+    title: `Instahancer Settings ${version}`,
     fields: configDesc,
     frameStyle:
-      "border: 1px solid #363636; border-radius: 12px; background: #000;" +
-      " box-shadow: 0 12px 32px rgba(0,0,0,.6); width: min(420px, 92vw);" +
+      "border: 1px solid #363636; border-radius: 12px; background: #212121;" +
+      " box-shadow: 0 12px 32px rgba(0,0,0,.6); width: min(375px, 92vw);" +
       " height: auto; max-height: 90vh; min-height: 215px; overflow: auto; padding: 0;" +
       " position: fixed; z-index: 9999; display: none; opacity: 0;",
     css: `
@@ -89,16 +89,16 @@
       border-radius: 6px;
       color: #f5f5f5;
       padding: 6px 8px;
-      width: 80px;
+      width: 50px;
     }
     #Instahancer_Config input[type="checkbox"] {
-      accent-color: #0095f6;
+      accent-color: #1a1a1a;
       width: 16px;
       height: 16px;
     }
     #Instahancer_Config_buttons_holder {
       display: flex;
-      justify-content: flex-end;
+      justify-content: start;
       align-items: center;
       gap: 8px;
       margin-top: 18px;
@@ -120,6 +120,11 @@
       color: #a8a8a8;
       font-size: 11px;
       margin-left: 4px;
+    }
+    #Instahancer_Config .config_header {
+      text-align: left;
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
     }
   `,
     events: {
@@ -185,6 +190,7 @@
     
     [role="main"] > div {
         max-width: 85vw !important;        
+        margin: 0 auto;
     }
 
     [role="main"] > div > div {
@@ -199,7 +205,6 @@
     video[controlslist="nodownload"] {
       max-height: 96vh;
     }
-
   `;
 
   GM_addStyle(styles);
