@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name                Instahancer
 // @namespace           https://github.com/schalkburger/instahancer
-// @version             1.14.12
+// @version             1.14.14
 // @description         Instagram Reels Enhancements: HTML5 controller, volume control, RAM saver, and more.
 // @author              Schalk Burger <schalkb@gmail.com>
 // @match               https://*.instagram.com/*
@@ -378,6 +378,12 @@
     e.stopPropagation();
     e.stopImmediatePropagation();
 
+    // Native control bar (bottom strip): Chromium activates controls on
+    // pointerdown, before this click handler runs. Toggling again would
+    // immediately reverse play/pause, mute, fullscreen. Block nav only.
+    const rect = video.getBoundingClientRect();
+    if (e.clientY > rect.bottom - 48) return;
+
     if (video.paused) {
       video.play();
     } else {
@@ -412,9 +418,16 @@
 
     const href = el.getAttribute("href");
     if (href) {
+      // Compare path only: hrefs carry ?hl=en etc.
+      let path;
+      try {
+        path = new URL(href, location.origin).pathname;
+      } catch (err) {
+        return true;
+      }
       // Media wrapper (/reel/<code>, /p/<code>) = video surface.
       // Anything else (profile, comments, external) navigates normally.
-      return !/^\/(?:reels?|p)\/[A-Za-z0-9_-]{7,}\/?$/.test(href);
+      return !/^\/(?:reels?|p)\/[A-Za-z0-9_-]{7,}\/?$/.test(path);
     }
     return false;
   }
